@@ -4,6 +4,7 @@ import {
   OrderByCondition,
   SelectQueryBuilder,
   WhereExpression,
+  NamingStrategyInterface,
 } from 'typeorm';
 
 import {
@@ -109,6 +110,7 @@ export default class Paginator<Entity> {
   private appendPagingQuery(builder: SelectQueryBuilder<Entity>): SelectQueryBuilder<Entity> {
     const cursors: CursorParam = {};
     const { escape } = builder.connection.driver;
+    const namingStrategy = builder.connection.namingStrategy;
 
     if (this.hasAfterCursor()) {
       Object.assign(cursors, this.decode(this.afterCursor as string));
@@ -117,7 +119,7 @@ export default class Paginator<Entity> {
     }
 
     if (Object.keys(cursors).length > 0) {
-      builder.andWhere(new Brackets((where) => this.buildCursorQuery(where, cursors, escape)));
+      builder.andWhere(new Brackets((where) => this.buildCursorQuery(where, cursors, namingStrategy)));
     }
 
     builder.take(this.limit + 1);
@@ -126,14 +128,16 @@ export default class Paginator<Entity> {
     return builder;
   }
 
-  private buildCursorQuery(where: WhereExpression, cursors: CursorParam, escape: EscapeFn): void {
+  private buildCursorQuery(where: WhereExpression, cursors: CursorParam, namingStrategy: NamingStrategyInterface): void {
     const operator = this.getOperator();
     const params: CursorParam = {};
     let query = '';
-    this.paginationKeys.forEach((key) => {
+    this.paginationKeys.forEach((key, i) => {
       params[key] = cursors[key];
-      where.orWhere(`${query}${escape(this.alias)}.${escape(key)} ${operator} :${key}`, params);
-      query = `${query}${escape(this.alias)}.${escape(key)} = :${key} AND `;
+      const isLastKey = this.paginationKeys.length -1 == i;
+      const columnName = namingStrategy.columnName(key, undefined, [])
+      where.orWhere(`${query}${escape(this.alias)}.${columnName} ${operator} :${key}`, params);
+      query = `${query}${escape(this.alias)}.${columnName} = :${key} ${!isLastKey?'AND ':''} `;
     });
   }
 
